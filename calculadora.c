@@ -38,7 +38,7 @@ void on_button_clicked(GtkWidget *widget, gpointer data) {
     // Wrap current expression in function like sin(), cos(), etc.
     } else if (strcmp(label, "sin") == 0 || strcmp(label, "cos") == 0 ||
                strcmp(label, "tan") == 0 || strcmp(label, "log") == 0 ||
-               strcmp(label, "ln") == 0 || strcmp(label, "sqrt") == 0) {
+               strcmp(label, "ln") == 0 || strcmp(label, "√") == 0) {
         snprintf(buffer, sizeof(buffer), "%s(%s)", label, current);
         gtk_entry_set_text(GTK_ENTRY(entry), buffer);
 
@@ -106,7 +106,7 @@ int main(int argc, char *argv[]) {
 
     // Button labels
     const char *buttons[6][5] = {
-        {"7","8","9","/","sqrt"},
+        {"7","8","9","/","√"},
         {"4","5","6","*","^"},
         {"1","2","3","-","log"},
         {"0",".","=","+","ln"},
