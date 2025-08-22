@@ -7,20 +7,120 @@
 // Global entry widget
 GtkWidget *entry;
 
-// Forward declaration for evaluation function
-double eval(const char *expr);
+// Utility: trim spaces
+void trim_copy(const char *src, char *dst, size_t n) {
+    while (isspace((unsigned char)*src)) src++;
+    size_t len = strlen(src);
+    while (len > 0 && isspace((unsigned char)src[len-1])) len--;
+    if (len >= n) len = n-1;
+    memcpy(dst, src, len);
+    dst[len] = '\0';
+}
 
-// Function called when any button is clicked
+// Recursive evaluator
+double eval(const char *expr) {
+    if (!expr) return NAN;
+
+    char s[512];
+    trim_copy(expr, s, sizeof(s));
+    if (s[0] == '\0') return 0.0;
+
+    // Parentheses
+    if (s[0] == '(') {
+        int depth = 0;
+        size_t i;
+        for (i = 0; s[i]; i++) {
+            if (s[i] == '(') depth++;
+            else if (s[i] == ')') {
+                depth--;
+                if (depth == 0 && s[i+1] == '\0') {
+                    char inner[512];
+                    size_t inner_len = i - 1;
+                    if (inner_len >= sizeof(inner)) inner_len = sizeof(inner)-1;
+                    memcpy(inner, s+1, inner_len);
+                    inner[inner_len] = '\0';
+                    return eval(inner);
+                }
+            }
+        }
+    }
+
+    double num1;
+    char func[32];
+
+    // √number  (symbol)
+    if ((unsigned char)s[0] == 0xE2) { // UTF-8 "√" starts with 0xE2
+        return sqrt(eval(s+3)); // skip 3-byte UTF-8 symbol
+    }
+
+    // sqrt(...)
+    if (sscanf(s, "sqrt(%lf)", &num1) == 1) return sqrt(num1);
+
+    // sin, cos, tan, log, ln
+    if (sscanf(s, "%31[a-z](%lf)", func, &num1) == 2) {
+        if (strcmp(func,"sin")==0) return sin(num1);
+        if (strcmp(func,"cos")==0) return cos(num1);
+        if (strcmp(func,"tan")==0) return tan(num1);
+        if (strcmp(func,"log")==0) return log10(num1);
+        if (strcmp(func,"ln")==0)  return log(num1);
+    }
+
+    // Operator precedence: +-, then */, then ^
+    const char *groups[] = { "+-", "*/", "^" };
+    for (int g = 0; g < 3; g++) {
+        int depth = 0;
+        for (ssize_t i = (ssize_t)strlen(s)-1; i >= 0; i--) {
+            char c = s[i];
+            if (c == ')') { depth++; continue; }
+            if (c == '(') { depth--; continue; }
+            if (depth != 0) continue;
+
+            if (strchr(groups[g], c)) {
+                // unary +/- detection
+                if ((c == '+' || c == '-')) {
+                    ssize_t j = i-1;
+                    while (j >= 0 && isspace((unsigned char)s[j])) j--;
+                    if (j < 0) continue;
+                    if (strchr("+-*/^(", s[j])) continue;
+                }
+
+                // split
+                char left[512], right[512];
+                strncpy(left, s, i);
+                left[i] = '\0';
+                strncpy(right, s+i+1, sizeof(right)-1);
+                right[sizeof(right)-1] = '\0';
+
+                double L = eval(left);
+                double R = eval(right);
+
+                switch(c) {
+                    case '+': return L + R;
+                    case '-': return L - R;
+                    case '*': return L * R;
+                    case '/': return (R != 0.0) ? L / R : NAN;
+                    case '^': return pow(L, R);
+                }
+            }
+        }
+    }
+
+    // Fallback: number
+    char *endptr = NULL;
+    double val = strtod(s, &endptr);
+    if (endptr && *endptr == '\0') return val;
+
+    return NAN;
+}
+
+// Button callback
 void on_button_clicked(GtkWidget *widget, gpointer data) {
     const char *label = gtk_button_get_label(GTK_BUTTON(widget));
     const char *current = gtk_entry_get_text(GTK_ENTRY(entry));
-    char buffer[256];
+    char buffer[512];
 
-    // Clear the entire entry
     if (strcmp(label, "C") == 0) {
         gtk_entry_set_text(GTK_ENTRY(entry), "");
-
-    // Backspace: delete one character
     } else if (strcmp(label, "Del") == 0) {
         int len = strlen(current);
         if (len > 0) {
@@ -28,93 +128,41 @@ void on_button_clicked(GtkWidget *widget, gpointer data) {
             buffer[len - 1] = '\0';
             gtk_entry_set_text(GTK_ENTRY(entry), buffer);
         }
-
-    // Evaluate the expression
     } else if (strcmp(label, "=") == 0) {
         double result = eval(current);
-        sprintf(buffer, "%.10g", result);
-        gtk_entry_set_text(GTK_ENTRY(entry), buffer);
-
-    // Wrap current expression in function like sin(), cos(), etc.
+        if (isnan(result))
+            gtk_entry_set_text(GTK_ENTRY(entry), "Error");
+        else {
+            sprintf(buffer, "%.10g", result);
+            gtk_entry_set_text(GTK_ENTRY(entry), buffer);
+        }
     } else if (strcmp(label, "sin") == 0 || strcmp(label, "cos") == 0 ||
                strcmp(label, "tan") == 0 || strcmp(label, "log") == 0 ||
                strcmp(label, "ln") == 0) {
         snprintf(buffer, sizeof(buffer), "%s(%s)", label, current);
         gtk_entry_set_text(GTK_ENTRY(entry), buffer);
-
-    // Square root special case (prepend √)
     } else if (strcmp(label, "√") == 0) {
         snprintf(buffer, sizeof(buffer), "√%s", current);
         gtk_entry_set_text(GTK_ENTRY(entry), buffer);
-
-    // Append number/operator to the entry
     } else {
         snprintf(buffer, sizeof(buffer), "%s%s", current, label);
         gtk_entry_set_text(GTK_ENTRY(entry), buffer);
     }
 }
 
-// Expression evaluator
-double eval(const char *expr) {
-    double num1, num2;
-    char func[10];
-
-    // Handle square root with symbol √
-    if (expr[0] == '√') {
-        return sqrt(atof(expr + 2)); // expr+2 salta el símbolo UTF-8 "√" (ocupa 2 bytes)
-    }
-
-    // Handle single-argument functions like sin(0.5)
-    if (sscanf(expr, "%[a-z](%lf)", func, &num1) == 2) {
-        if (strcmp(func, "sin") == 0) return sin(num1);
-        if (strcmp(func, "cos") == 0) return cos(num1);
-        if (strcmp(func, "tan") == 0) return tan(num1);
-        if (strcmp(func, "log") == 0) return log10(num1);
-        if (strcmp(func, "ln") == 0) return log(num1);
-    }
-
-    // Handle binary operators by searching manually
-    const char *ops = "+-*/^";
-    for (const char *p = expr; *p; p++) {
-        if (strchr(ops, *p)) {
-            char left[128], right[128];
-            strncpy(left, expr, p - expr);
-            left[p - expr] = '\0';
-            strcpy(right, p + 1);
-
-            num1 = atof(left);
-            num2 = atof(right);
-
-            switch (*p) {
-                case '+': return num1 + num2;
-                case '-': return num1 - num2;
-                case '*': return num1 * num2;
-                case '/': return num2 != 0 ? num1 / num2 : NAN;
-                case '^': return pow(num1, num2);
-            }
-        }
-    }
-
-    // If it's just a number
-    return atof(expr);
-}
-
 int main(int argc, char *argv[]) {
     gtk_init(&argc, &argv);
 
-    // Create main window
     GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(window), "Scientific Calculator");
     gtk_window_set_default_size(GTK_WINDOW(window), 350, 450);
     g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
 
-    // Create grid container
     GtkWidget *grid = gtk_grid_new();
     gtk_container_add(GTK_CONTAINER(window), grid);
     gtk_grid_set_row_spacing(GTK_GRID(grid), 5);
     gtk_grid_set_column_spacing(GTK_GRID(grid), 5);
 
-    // Create entry field
     entry = gtk_entry_new();
     gtk_grid_attach(GTK_GRID(grid), entry, 0, 0, 5, 1);
     gtk_widget_set_margin_top(entry, 10);
@@ -123,7 +171,6 @@ int main(int argc, char *argv[]) {
     gtk_widget_set_margin_end(entry, 10);
     gtk_widget_set_size_request(entry, 300, 50);
 
-    // Button labels
     const char *buttons[6][5] = {
         {"7","8","9","/","√"},
         {"4","5","6","*","^"},
@@ -133,7 +180,6 @@ int main(int argc, char *argv[]) {
         {"(",")","","",""}
     };
 
-    // Create buttons and attach to grid
     for (int i = 0; i < 6; i++) {
         for (int j = 0; j < 5; j++) {
             if (buttons[i][j][0] != '\0') {
@@ -149,7 +195,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Show all widgets
     gtk_widget_show_all(window);
     gtk_main();
     return 0;
