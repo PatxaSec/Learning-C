@@ -38,8 +38,13 @@ void on_button_clicked(GtkWidget *widget, gpointer data) {
     // Wrap current expression in function like sin(), cos(), etc.
     } else if (strcmp(label, "sin") == 0 || strcmp(label, "cos") == 0 ||
                strcmp(label, "tan") == 0 || strcmp(label, "log") == 0 ||
-               strcmp(label, "ln") == 0 || strcmp(label, "√") == 0) {
+               strcmp(label, "ln") == 0) {
         snprintf(buffer, sizeof(buffer), "%s(%s)", label, current);
+        gtk_entry_set_text(GTK_ENTRY(entry), buffer);
+
+    // Square root special case (prepend √)
+    } else if (strcmp(label, "√") == 0) {
+        snprintf(buffer, sizeof(buffer), "√%s", current);
         gtk_entry_set_text(GTK_ENTRY(entry), buffer);
 
     // Append number/operator to the entry
@@ -49,11 +54,15 @@ void on_button_clicked(GtkWidget *widget, gpointer data) {
     }
 }
 
-// Simple expression evaluator
+// Expression evaluator
 double eval(const char *expr) {
-    char op;
     double num1, num2;
     char func[10];
+
+    // Handle square root with symbol √
+    if (expr[0] == '√') {
+        return sqrt(atof(expr + 2)); // expr+2 salta el símbolo UTF-8 "√" (ocupa 2 bytes)
+    }
 
     // Handle single-argument functions like sin(0.5)
     if (sscanf(expr, "%[a-z](%lf)", func, &num1) == 2) {
@@ -62,17 +71,27 @@ double eval(const char *expr) {
         if (strcmp(func, "tan") == 0) return tan(num1);
         if (strcmp(func, "log") == 0) return log10(num1);
         if (strcmp(func, "ln") == 0) return log(num1);
-        if (strcmp(func, "sqrt") == 0) return sqrt(num1);
     }
 
-    // Handle basic binary operators: + - * / ^
-    if (sscanf(expr, "%lf%c%lf", &num1, &op, &num2) == 3) {
-        switch(op) {
-            case '+': return num1 + num2;
-            case '-': return num1 - num2;
-            case '*': return num1 * num2;
-            case '/': return num2 != 0 ? num1 / num2 : NAN;
-            case '^': return pow(num1, num2);
+    // Handle binary operators by searching manually
+    const char *ops = "+-*/^";
+    for (const char *p = expr; *p; p++) {
+        if (strchr(ops, *p)) {
+            char left[128], right[128];
+            strncpy(left, expr, p - expr);
+            left[p - expr] = '\0';
+            strcpy(right, p + 1);
+
+            num1 = atof(left);
+            num2 = atof(right);
+
+            switch (*p) {
+                case '+': return num1 + num2;
+                case '-': return num1 - num2;
+                case '*': return num1 * num2;
+                case '/': return num2 != 0 ? num1 / num2 : NAN;
+                case '^': return pow(num1, num2);
+            }
         }
     }
 
@@ -135,4 +154,3 @@ int main(int argc, char *argv[]) {
     gtk_main();
     return 0;
 }
-
