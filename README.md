@@ -1,5 +1,8 @@
 # Learning-C
-personal projects with which I am learning C.
+Personal projects for learning C.
+
+> [!WARNING]  
+> I am still learning, so bugs may exist.
 
 - [Calculator](calculadora.c)
 
