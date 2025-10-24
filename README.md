@@ -10,6 +10,7 @@ Personal projects for learning C.
 
 - [Text editor](texter.c)  – A simple text editor.
 
-<img width="819" height="647" alt="image" src="https://github.com/user-attachments/assets/434ea4b7-08b2-4b4a-b329-fc58cbba6956" />
+<img width="825" height="648" alt="image" src="https://github.com/user-attachments/assets/bb4c5a32-a259-4169-9adb-16d27e54873b" />
+
 
 
